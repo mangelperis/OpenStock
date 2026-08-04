@@ -35,29 +35,66 @@
 
 OpenStock is an open-source alternative to expensive market platforms. Track real-time prices, set personalized alerts, and explore detailed company insights — built openly, for everyone, forever free.
 
+> **This repository** ([mangelperis/OpenStock](https://github.com/mangelperis/OpenStock)) is a **fork** of [Open-Dev-Society/OpenStock](https://github.com/Open-Dev-Society/OpenStock). See [Fork modifications](#fork-modifications) for what changed here.
+
 Note: OpenStock is community-built and not a brokerage. Market data may be delayed based on provider rules and your configuration. Nothing here is financial advice.
 
 ## 📋 Table of Contents
 
 1. ✨ [Introduction](#introduction)
-2. 🌍 [Open Dev Society Manifesto](#manifesto)
-3. ⚙️ [Tech Stack](#tech-stack)
-4. 🔋 [Features](#features)
-5. 🤸 [Quick Start](#quick-start)
-6. 🐳 [Docker Setup](#docker-setup)
-7. 🔐 [Environment Variables](#environment-variables)
-8. 🧱 [Project Structure](#project-structure)
-9. 📡 [Data & Integrations](#data--integrations)
-10. 🌍 [Market Support](#market-support)
-11. 🧪 [Scripts & Tooling](#scripts--tooling)
-12. 🤝 [Contributing](#contributing)
-13. 🛡️ [Security](#security)
-14. 📜 [License](#license)
-15. 🙏 [Acknowledgements](#acknowledgements)
+2. 🔀 [Fork modifications](#fork-modifications)
+3. 🌍 [Open Dev Society Manifesto](#manifesto)
+4. ⚙️ [Tech Stack](#tech-stack)
+5. 🔋 [Features](#features)
+6. 🤸 [Quick Start](#quick-start)
+7. 🐳 [Docker Setup](#docker-setup)
+8. 🔐 [Environment Variables](#environment-variables)
+9. 🧱 [Project Structure](#project-structure)
+10. 📡 [Data & Integrations](#data--integrations)
+11. 🌍 [Market Support](#market-support)
+12. 🧪 [Scripts & Tooling](#scripts--tooling)
+13. 🤝 [Contributing](#contributing)
+14. 🛡️ [Security](#security)
+15. 📜 [License](#license)
+16. 🙏 [Acknowledgements](#acknowledgements)
 
 ## ✨ Introduction <a name="introduction"></a>
 
 OpenStock is a modern stock market app powered by Next.js (App Router), shadcn/ui and Tailwind CSS, Better Auth for authentication, MongoDB for persistence, Finnhub for market data, and TradingView widgets for charts and market views.
+
+## 🔀 Fork modifications <a name="fork-modifications"></a>
+
+Changes in this fork relative to upstream OpenStock:
+
+### Sentiment movers (`/sentiment`)
+- New **Sentiment** nav item and login-gated page.
+- Shows Adanos **hottest** tickers by buzz (~15), with tabs for Reddit, X, News, and Polymarket.
+- Rows link to local `/stocks/[symbol]` pages.
+- Distinct UI states for missing `ADANOS_API_KEY`, empty lists, and per-source fetch errors.
+- Trending fetch lives in `lib/actions/adanos.trending.ts` (not a server action) with 1-hour cache (`revalidate: 3600`).
+- Design/plan notes: `docs/superpowers/specs/2026-08-04-sentiment-movers-design.md`, `docs/superpowers/plans/2026-08-04-sentiment-movers.md`.
+
+### Watchlist navigation
+- Replaced the TradingView market-quotes widget on the watchlist with a local Finnhub-backed table.
+- Company name, symbol, and chips link to `/stocks/[symbol]` instead of opening TradingView.
+
+### Docker / local hosting
+- App published on host port **3001** (avoids conflict when something else owns 3000).
+- `extra_hosts` for `host.docker.internal` and `mongodb` so the container can reach host Mongo during build and host services (e.g. Ollama) at runtime.
+- Set `BETTER_AUTH_URL=http://localhost:3001` when using this compose mapping.
+
+### Local LLM via Ollama (config, not a code provider)
+- OpenStock’s AI path for emails still uses Gemini / MiniMax / Siray.
+- For local models, point the MiniMax OpenAI-compatible client at Ollama, for example:
+  ```env
+  AI_PROVIDER=minimax
+  MINIMAX_API_KEY=ollama
+  MINIMAX_BASE_URL=http://host.docker.internal:11434/v1
+  MINIMAX_MODEL=llama3.1:8b
+  ```
+- Background AI still needs Inngest Dev/Cloud to run; Ollama alone does not add an in-app chat UI.
+
+Upstream remains the source of truth for core product direction; keep AGPL-3.0 attribution when redistributing.
 
 ## 🌍 Open Dev Society Manifesto <a name="manifesto"></a>
 
@@ -109,6 +146,9 @@ Language composition
     - Popular stocks when idle; debounced querying
 - Watchlist
     - Per-user watchlist stored in MongoDB (unique symbol per user)
+    - Local Finnhub table with links to `/stocks/[symbol]` (this fork)
+- Sentiment movers (this fork)
+    - Login-gated `/sentiment` page: hottest Adanos buzz leaders by source tab
 - Stock details
     - TradingView symbol info, candlestick/advanced charts, baseline, technicals
     - Company profile and financials widgets
@@ -199,13 +239,14 @@ docker compose up -d mongodb && docker compose up -d --build
 ```
 
 5) Access the app:
-- App: http://localhost:3000
+- App: http://localhost:3001 (this fork maps host **3001→3000**; upstream docs use 3000)
 - MongoDB is available inside the Docker network at host mongodb:27017
 
 Notes
 - The app service depends_on the mongodb service.
 - Credentials are defined in Compose for the MongoDB root user; authSource=admin is required on the connection string for root.
 - Data persists across restarts via the docker volume.
+- Set `BETTER_AUTH_URL=http://localhost:3001` to match the published port.
 
 Optional: Example MongoDB service definition used in this project:
 ```yaml
@@ -372,7 +413,9 @@ public/assets/images/   # logos and screenshots
 - Adanos sentiment insights (optional)
     - Structured stock sentiment snapshots across Reddit, X.com, news, and Polymarket.
     - Set `ADANOS_API_KEY`; optionally override the API host with `ADANOS_API_BASE_URL`.
-    - Used only for the stock detail sentiment card and does not replace Finnhub or TradingView.
+    - Stock detail card: per-ticker compare insights.
+    - This fork also uses Adanos `/trending` on the `/sentiment` movers page (hottest by buzz).
+    - Does not replace Finnhub or TradingView.
 
 - TradingView
     - Embeddable widgets used for charts, heatmap, quotes, and timelines.
