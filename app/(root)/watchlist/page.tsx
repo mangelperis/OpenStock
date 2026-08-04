@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
 import { getUserAlerts } from '@/lib/actions/alert.actions';
-import { getNews } from '@/lib/actions/finnhub.actions';
+import { getNews, getWatchlistData } from '@/lib/actions/finnhub.actions';
 import WatchlistManager from '@/components/watchlist/WatchlistManager';
 import AlertsPanel from '@/components/watchlist/AlertsPanel';
 import NewsGrid from '@/components/watchlist/NewsGrid';
@@ -31,6 +31,11 @@ export default async function WatchlistPage() {
 
     const watchlistSymbols = watchlistItems.map((item: any) => item.symbol);
 
+    // Finnhub quotes/profiles for the local watchlist table (links to /stocks/[symbol])
+    const tableData = watchlistSymbols.length > 0
+        ? await getWatchlistData(watchlistSymbols)
+        : [];
+
     // Fallback news if watchlist has items
     const relevantNews = watchlistSymbols.length > 0 ? await getNews(watchlistSymbols) : news;
 
@@ -53,7 +58,11 @@ export default async function WatchlistPage() {
                 {/* Main Content - Watchlist Table */}
                 <div className="lg:col-span-3 space-y-8">
                     <div className="space-y-6">
-                        <WatchlistManager initialItems={watchlistItems} userId={userId} />
+                        <WatchlistManager
+                            initialItems={watchlistItems}
+                            userId={userId}
+                            initialTableData={tableData}
+                        />
                     </div>
 
                     {/* News Section */}

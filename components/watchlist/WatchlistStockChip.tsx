@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { removeFromWatchlist } from "@/lib/actions/watchlist.actions";
 import { getQuote } from "@/lib/actions/finnhub.actions";
 import { Bell, Loader2, X } from "lucide-react";
@@ -43,7 +44,13 @@ export default function WatchlistStockChip({ symbol, userId }: WatchlistStockChi
 
     return (
         <div className="group flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700/80 rounded-full border border-gray-700 transition-all">
-            <span className="font-semibold text-sm text-white">{symbol}</span>
+            <Link
+                href={`/stocks/${encodeURIComponent(symbol)}`}
+                className="font-semibold text-sm text-white hover:text-teal-400 transition-colors"
+                title={`Open ${symbol}`}
+            >
+                {symbol}
+            </Link>
 
             {/* Divider */}
             <div className="w-px h-4 bg-gray-600 mx-1"></div>

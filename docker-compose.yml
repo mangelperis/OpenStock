@@ -2,10 +2,17 @@ services:
   openstock:
     build:
       context: .
+      # During `next build`, pages touch Mongo; map service name to the host
+      # where compose publishes MongoDB (27017).
       extra_hosts:
         - "mongodb:host-gateway"
+    # Reach host Ollama (and other host services) from the running container
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "mongodb:host-gateway"
     ports:
-      - "3000:3000"
+      # Host 3000 is often taken (e.g. Grafana); map app to 3001
+      - "3001:3000"
     env_file:
       - .env
     restart: unless-stopped

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import WatchlistStockChip from './WatchlistStockChip';
-import TradingViewWatchlist from './TradingViewWatchlist';
+import WatchlistTable from './WatchlistTable';
 import { Button } from '@/components/ui/button';
 import { ArrowDownAZ, ArrowUpZA, ArrowUpDown } from 'lucide-react';
 import { WatchlistItem } from '@/database/models/watchlist.model';
@@ -10,9 +10,11 @@ import { WatchlistItem } from '@/database/models/watchlist.model';
 interface WatchlistManagerProps {
     initialItems: WatchlistItem[]; // Using the DB model type directly or a simplified version
     userId: string;
+    /** Finnhub-enriched rows for the local table (company, price, change, …) */
+    initialTableData?: any[];
 }
 
-export default function WatchlistManager({ initialItems, userId }: WatchlistManagerProps) {
+export default function WatchlistManager({ initialItems, userId, initialTableData = [] }: WatchlistManagerProps) {
     // Sort state: 'asc' (A-Z), 'desc' (Z-A), or null (added order/default)
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
 
@@ -35,6 +37,26 @@ export default function WatchlistManager({ initialItems, userId }: WatchlistMana
     }, [initialItems, sortOrder]);
 
     const watchlistSymbols = sortedItems.map((item) => item.symbol);
+
+    const sortedTableData = useMemo(() => {
+        if (!initialTableData.length) {
+            // Fallback rows when quotes were not prefetched
+            return sortedItems.map((item) => ({
+                symbol: item.symbol,
+                name: item.company || item.symbol,
+                price: 0,
+                change: 0,
+                changePercent: 0,
+                marketCap: undefined,
+                logo: undefined,
+            }));
+        }
+
+        const bySymbol = new Map(initialTableData.map((row) => [row.symbol, row]));
+        return sortedItems
+            .map((item) => bySymbol.get(item.symbol))
+            .filter(Boolean);
+    }, [sortedItems, initialTableData]);
 
     return (
         <div className="space-y-6">
@@ -87,9 +109,10 @@ export default function WatchlistManager({ initialItems, userId }: WatchlistMana
                 )}
             </div>
 
-            <div className="min-h-[550px]">
-                <TradingViewWatchlist symbols={watchlistSymbols} />
-            </div>
+            <WatchlistTable
+                data={sortedTableData}
+                userId={userId}
+            />
         </div>
     );
 }

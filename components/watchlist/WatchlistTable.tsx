@@ -89,7 +89,10 @@ export default function WatchlistTable({ data, userId, onRefresh }: WatchlistTab
                         return (
                             <tr key={stock.symbol} className="hover:bg-white/5 transition-colors group">
                                 <td className="px-6 py-4">
-                                    <div className="flex items-center space-x-4">
+                                    <Link
+                                        href={`/stocks/${encodeURIComponent(stock.symbol)}`}
+                                        className="flex items-center space-x-4 hover:opacity-90"
+                                    >
                                         {stock.logo ? (
                                             <div className="w-10 h-10 relative rounded-full overflow-hidden bg-white/10 shadow-sm border border-white/5">
                                                 <Image
@@ -107,12 +110,15 @@ export default function WatchlistTable({ data, userId, onRefresh }: WatchlistTab
                                         <div className="flex flex-col">
                                             <span className="font-semibold text-white text-base">{stock.name}</span>
                                         </div>
-                                    </div>
+                                    </Link>
                                 </td>
                                 <td className="px-6 py-4 font-medium text-gray-300">
-                                    <span className="bg-white/5 px-2.5 py-1 rounded-md text-xs font-mono border border-white/10">
+                                    <Link
+                                        href={`/stocks/${encodeURIComponent(stock.symbol)}`}
+                                        className="bg-white/5 px-2.5 py-1 rounded-md text-xs font-mono border border-white/10 hover:border-white/30 hover:text-white transition-colors"
+                                    >
                                         {stock.symbol}
-                                    </span>
+                                    </Link>
                                 </td>
                                 <td className="px-6 py-4 text-white font-medium text-base tracking-tight">
                                     {formatCurrency(stock.price)}
