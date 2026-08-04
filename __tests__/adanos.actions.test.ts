@@ -7,6 +7,7 @@ import {
     buildStockSentimentInsights,
     getSourceAlignment,
     normalizeSourceInsight,
+    normalizeTrendingItem,
 } from '@/lib/actions/adanos.helpers';
 
 afterEach(() => {
@@ -67,6 +68,49 @@ describe('normalizeSourceInsight', () => {
                 bullish_pct: 54,
             }),
         ).toBeNull();
+    });
+});
+
+describe('normalizeTrendingItem', () => {
+    it('maps a reddit trending row', () => {
+        expect(
+            normalizeTrendingItem('reddit', {
+                ticker: 'AMZN',
+                company_name: 'Amazon.com Inc',
+                buzz_score: 75,
+                bullish_pct: 31,
+                trend: 'rising',
+                mentions: 134,
+            }),
+        ).toEqual({
+            source: 'reddit',
+            label: 'Reddit',
+            ticker: 'AMZN',
+            companyName: 'Amazon.com Inc',
+            buzzScore: 75,
+            bullishPct: 31,
+            trend: 'rising',
+            metricLabel: 'Mentions',
+            metricValue: 134,
+        });
+    });
+
+    it('maps polymarket trade_count', () => {
+        expect(
+            normalizeTrendingItem('polymarket', {
+                ticker: 'PLTR',
+                company_name: 'Palantir',
+                buzz_score: 70.5,
+                bullish_pct: 93,
+                trend: 'rising',
+                trade_count: 87,
+            })?.metricValue,
+        ).toBe(87);
+    });
+
+    it('returns null without ticker or buzz_score', () => {
+        expect(normalizeTrendingItem('x', { mentions: 10 })).toBeNull();
+        expect(normalizeTrendingItem('x', { ticker: 'MU', mentions: 10 })).toBeNull();
     });
 });
 
