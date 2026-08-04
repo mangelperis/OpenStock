@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+    getAllTrendingSentiment,
     getStockSentimentInsights,
+    getTrendingBySource,
 } from '@/lib/actions/adanos.actions';
 import {
     buildStockSentimentInsights,
@@ -252,5 +254,57 @@ describe('getStockSentimentInsights', () => {
         vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network failed'));
 
         await expect(getStockSentimentInsights('TSLA')).resolves.toBeNull();
+    });
+});
+
+describe('getTrendingBySource', () => {
+    it('returns [] when API key missing', async () => {
+        await expect(getTrendingBySource('reddit')).resolves.toEqual([]);
+    });
+
+    it('normalizes array payload from trending endpoint', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => [
+                    {
+                        ticker: 'AMZN',
+                        company_name: 'Amazon.com Inc',
+                        buzz_score: 75,
+                        bullish_pct: 31,
+                        trend: 'rising',
+                        mentions: 134,
+                    },
+                ],
+            }),
+        );
+        const rows = await getTrendingBySource('reddit', 15);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].ticker).toBe('AMZN');
+        expect(fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/reddit/stocks/v1/trending'),
+            expect.objectContaining({
+                headers: expect.objectContaining({ 'X-API-Key': 'test-key' }),
+            }),
+        );
+    });
+});
+
+describe('getAllTrendingSentiment', () => {
+    it('returns all four keys', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => [],
+            }),
+        );
+        const all = await getAllTrendingSentiment(15);
+        expect(Object.keys(all).sort()).toEqual(['news', 'polymarket', 'reddit', 'x']);
     });
 });
