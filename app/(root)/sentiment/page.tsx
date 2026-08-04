@@ -23,7 +23,9 @@ export default async function SentimentPage() {
                     Sentiment
                 </h1>
                 <p className="text-gray-500 mt-1">
-                    Hottest tickers by attention and buzz across Reddit, X.com, news, and Polymarket — not price predictions.
+                    Hottest tickers by Adanos buzz over the last 7 days (same window as the stock detail
+                    sentiment card). Per-source tabs — not an average across channels, and not price
+                    predictions.
                 </p>
             </div>
 

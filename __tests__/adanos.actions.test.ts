@@ -260,35 +260,63 @@ describe('getTrendingBySource', () => {
         await expect(getTrendingBySource('reddit')).resolves.toEqual({ items: [], error: null });
     });
 
-    it('normalizes array payload from trending endpoint', async () => {
+    it('normalizes array payload and enriches from stock detail', async () => {
         process.env.ADANOS_API_KEY = 'test-key';
         vi.stubGlobal(
             'fetch',
-            vi.fn().mockResolvedValue({
-                ok: true,
-                status: 200,
-                json: async () => [
-                    {
+            vi.fn().mockImplementation(async (url: string) => {
+                const href = String(url);
+                if (href.includes('/trending')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => [
+                            {
+                                ticker: 'AMZN',
+                                company_name: 'Amazon.com Inc',
+                                buzz_score: 75,
+                                bullish_pct: 31,
+                                trend: 'rising',
+                                mentions: 134,
+                            },
+                        ],
+                    };
+                }
+                // /stock/AMZN — detail window numbers (may differ from trending)
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
                         ticker: 'AMZN',
                         company_name: 'Amazon.com Inc',
-                        buzz_score: 75,
-                        bullish_pct: 31,
-                        trend: 'rising',
-                        mentions: 134,
-                    },
-                ],
+                        buzz_score: 81.5,
+                        bullish_pct: 35,
+                        trend: 'falling',
+                        mentions: 3423,
+                    }),
+                };
             }),
         );
         const result = await getTrendingBySource('reddit', 15);
         expect(result.error).toBeNull();
         expect(result.items).toHaveLength(1);
-        expect(result.items[0].ticker).toBe('AMZN');
+        expect(result.items[0]).toMatchObject({
+            ticker: 'AMZN',
+            buzzScore: 81.5,
+            bullishPct: 35,
+            metricValue: 3423,
+            trend: 'falling',
+        });
         expect(fetch).toHaveBeenCalledWith(
-            expect.stringContaining('/reddit/stocks/v1/trending'),
+            expect.stringMatching(/\/reddit\/stocks\/v1\/trending\?.*days=7/),
             expect.objectContaining({
                 headers: expect.objectContaining({ 'X-API-Key': 'test-key' }),
                 next: { revalidate: 3600 },
             }),
+        );
+        expect(fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/reddit/stocks/v1/stock/AMZN'),
+            expect.any(Object),
         );
     });
 
@@ -296,14 +324,32 @@ describe('getTrendingBySource', () => {
         process.env.ADANOS_API_KEY = 'test-key';
         vi.stubGlobal(
             'fetch',
-            vi.fn().mockResolvedValue({
-                ok: true,
-                status: 200,
-                json: async () => [
-                    { ticker: 'LOW', buzz_score: 40, bullish_pct: 50, trend: 'stable', mentions: 10 },
-                    { ticker: 'HIGH', buzz_score: 90, bullish_pct: 50, trend: 'rising', mentions: 20 },
-                    { ticker: 'MID', buzz_score: 60, bullish_pct: 50, trend: 'falling', mentions: 15 },
-                ],
+            vi.fn().mockImplementation(async (url: string) => {
+                const href = String(url);
+                if (href.includes('/trending')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => [
+                            { ticker: 'LOW', buzz_score: 40, bullish_pct: 50, trend: 'stable', mentions: 10 },
+                            { ticker: 'HIGH', buzz_score: 90, bullish_pct: 50, trend: 'rising', mentions: 20 },
+                            { ticker: 'MID', buzz_score: 60, bullish_pct: 50, trend: 'falling', mentions: 15 },
+                        ],
+                    };
+                }
+                const ticker = href.split('/stock/')[1]?.split('?')[0] ?? 'UNK';
+                const buzz = ticker === 'HIGH' ? 90 : ticker === 'MID' ? 60 : 40;
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        ticker,
+                        buzz_score: buzz,
+                        bullish_pct: 50,
+                        trend: 'stable',
+                        mentions: 10,
+                    }),
+                };
             }),
         );
         const result = await getTrendingBySource('reddit', 15);
