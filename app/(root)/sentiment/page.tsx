@@ -1,7 +1,7 @@
 import { auth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getAllTrendingSentiment } from '@/lib/actions/adanos.actions';
+import { getAllTrendingSentiment } from '@/lib/actions/adanos.trending';
 import SentimentMoversClient from '@/components/sentiment/SentimentMoversClient';
 
 export default async function SentimentPage() {
@@ -35,9 +35,9 @@ export default async function SentimentPage() {
                         your environment to load sentiment trending data.
                     </p>
                 </div>
-            ) : (
-                <SentimentMoversClient initialData={trending!} />
-            )}
+            ) : trending ? (
+                <SentimentMoversClient initialData={trending} />
+            ) : null}
         </div>
     );
 }

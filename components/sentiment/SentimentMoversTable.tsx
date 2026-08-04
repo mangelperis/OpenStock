@@ -3,6 +3,7 @@ import type { TrendingSentimentItem } from '@/lib/actions/adanos.helpers';
 
 interface SentimentMoversTableProps {
     items: TrendingSentimentItem[];
+    error?: string | null;
 }
 
 function formatScore(value: number | null, suffix: string): string {
@@ -25,7 +26,16 @@ function getTrendClasses(trend: string | null): string {
     return 'text-gray-400';
 }
 
-export default function SentimentMoversTable({ items }: SentimentMoversTableProps) {
+export default function SentimentMoversTable({ items, error }: SentimentMoversTableProps) {
+    if (error) {
+        return (
+            <div className="text-center py-12 bg-gray-900/50 rounded-lg border border-rose-500/30">
+                <h3 className="text-xl font-medium text-rose-300 mb-2">Could not load trending data</h3>
+                <p className="text-gray-400">{error}</p>
+            </div>
+        );
+    }
+
     if (items.length === 0) {
         return (
             <div className="text-center py-12 bg-gray-900/50 rounded-lg border border-gray-800">

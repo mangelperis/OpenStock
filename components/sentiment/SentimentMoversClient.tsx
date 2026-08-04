@@ -4,18 +4,19 @@ import { useState } from 'react';
 import {
     SOURCE_CONFIG,
     type SentimentSourceKey,
-    type TrendingSentimentItem,
 } from '@/lib/actions/adanos.helpers';
+import type { TrendingBySourceResult } from '@/lib/actions/adanos.trending';
 import SentimentMoversTable from '@/components/sentiment/SentimentMoversTable';
 
 const SOURCE_KEYS = Object.keys(SOURCE_CONFIG) as SentimentSourceKey[];
 
 interface SentimentMoversClientProps {
-    initialData: Record<SentimentSourceKey, TrendingSentimentItem[]>;
+    initialData: Record<SentimentSourceKey, TrendingBySourceResult>;
 }
 
 export default function SentimentMoversClient({ initialData }: SentimentMoversClientProps) {
     const [activeSource, setActiveSource] = useState<SentimentSourceKey>('reddit');
+    const activeResult = initialData[activeSource] ?? { items: [], error: null };
 
     return (
         <div className="space-y-6">
@@ -39,7 +40,7 @@ export default function SentimentMoversClient({ initialData }: SentimentMoversCl
                 })}
             </div>
 
-            <SentimentMoversTable items={initialData[activeSource] ?? []} />
+            <SentimentMoversTable items={activeResult.items} error={activeResult.error} />
         </div>
     );
 }

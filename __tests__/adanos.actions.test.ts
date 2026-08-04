@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-    getAllTrendingSentiment,
-    getStockSentimentInsights,
-    getTrendingBySource,
-} from '@/lib/actions/adanos.actions';
+import { getStockSentimentInsights } from '@/lib/actions/adanos.actions';
+import { getAllTrendingSentiment, getTrendingBySource } from '@/lib/actions/adanos.trending';
 import {
     buildStockSentimentInsights,
     getSourceAlignment,
@@ -14,6 +11,7 @@ import {
 
 afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     delete process.env.ADANOS_API_KEY;
     delete process.env.ADANOS_API_BASE_URL;
 });
@@ -258,8 +256,8 @@ describe('getStockSentimentInsights', () => {
 });
 
 describe('getTrendingBySource', () => {
-    it('returns [] when API key missing', async () => {
-        await expect(getTrendingBySource('reddit')).resolves.toEqual([]);
+    it('returns empty items when API key missing', async () => {
+        await expect(getTrendingBySource('reddit')).resolves.toEqual({ items: [], error: null });
     });
 
     it('normalizes array payload from trending endpoint', async () => {
@@ -281,20 +279,63 @@ describe('getTrendingBySource', () => {
                 ],
             }),
         );
-        const rows = await getTrendingBySource('reddit', 15);
-        expect(rows).toHaveLength(1);
-        expect(rows[0].ticker).toBe('AMZN');
+        const result = await getTrendingBySource('reddit', 15);
+        expect(result.error).toBeNull();
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].ticker).toBe('AMZN');
         expect(fetch).toHaveBeenCalledWith(
             expect.stringContaining('/reddit/stocks/v1/trending'),
             expect.objectContaining({
                 headers: expect.objectContaining({ 'X-API-Key': 'test-key' }),
+                next: { revalidate: 3600 },
             }),
         );
+    });
+
+    it('sorts by buzzScore descending before slicing', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => [
+                    { ticker: 'LOW', buzz_score: 40, bullish_pct: 50, trend: 'stable', mentions: 10 },
+                    { ticker: 'HIGH', buzz_score: 90, bullish_pct: 50, trend: 'rising', mentions: 20 },
+                    { ticker: 'MID', buzz_score: 60, bullish_pct: 50, trend: 'falling', mentions: 15 },
+                ],
+            }),
+        );
+        const result = await getTrendingBySource('reddit', 15);
+        expect(result.items.map((item) => item.ticker)).toEqual(['HIGH', 'MID', 'LOW']);
+    });
+
+    it('returns error on HTTP failure', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: false,
+                status: 503,
+                json: async () => ({}),
+            }),
+        );
+        const result = await getTrendingBySource('reddit');
+        expect(result.items).toEqual([]);
+        expect(result.error).toBe('Failed to load trending data (503)');
+    });
+
+    it('returns error on fetch exception', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network failed')));
+        const result = await getTrendingBySource('reddit');
+        expect(result.items).toEqual([]);
+        expect(result.error).toBe('Failed to load trending data');
     });
 });
 
 describe('getAllTrendingSentiment', () => {
-    it('returns all four keys', async () => {
+    it('returns all four keys with items and error fields', async () => {
         process.env.ADANOS_API_KEY = 'test-key';
         vi.stubGlobal(
             'fetch',
@@ -306,5 +347,8 @@ describe('getAllTrendingSentiment', () => {
         );
         const all = await getAllTrendingSentiment(15);
         expect(Object.keys(all).sort()).toEqual(['news', 'polymarket', 'reddit', 'x']);
+        for (const source of Object.keys(all)) {
+            expect(all[source as keyof typeof all]).toEqual({ items: [], error: null });
+        }
     });
 });
