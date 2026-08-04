@@ -18,24 +18,28 @@ export const SOURCE_CONFIG = {
     reddit: {
         label: 'Reddit',
         path: '/reddit/stocks/v1/compare',
+        trendingPath: '/reddit/stocks/v1/trending',
         metricLabel: 'Mentions',
         metricField: 'mentions',
     },
     x: {
         label: 'X.com',
         path: '/x/stocks/v1/compare',
+        trendingPath: '/x/stocks/v1/trending',
         metricLabel: 'Mentions',
         metricField: 'mentions',
     },
     news: {
         label: 'News',
         path: '/news/stocks/v1/compare',
+        trendingPath: '/news/stocks/v1/trending',
         metricLabel: 'Mentions',
         metricField: 'mentions',
     },
     polymarket: {
         label: 'Polymarket',
         path: '/polymarket/stocks/v1/compare',
+        trendingPath: '/polymarket/stocks/v1/trending',
         metricLabel: 'Trades',
         metricField: 'trade_count',
     },
@@ -44,6 +48,7 @@ export const SOURCE_CONFIG = {
     {
         label: string;
         path: string;
+        trendingPath: string;
         metricLabel: string;
         metricField: string;
     }
@@ -70,6 +75,18 @@ export interface StockSentimentInsights {
     sourceAlignment: string;
     availableSources: number;
     sources: SentimentSourceInsight[];
+}
+
+export interface TrendingSentimentItem {
+    source: SentimentSourceKey;
+    label: string;
+    ticker: string;
+    companyName: string | null;
+    buzzScore: number;
+    bullishPct: number | null;
+    trend: SentimentTrend | null;
+    metricLabel: string;
+    metricValue: number | null;
 }
 
 function toNumber(value: unknown): number | null {
@@ -132,6 +149,28 @@ export function normalizeSourceInsight(
         trend: normalizeTrend(row.trend),
         metricLabel: SOURCE_CONFIG[source].metricLabel,
         metricValue: Math.round(metricValue),
+    };
+}
+
+export function normalizeTrendingItem(
+    source: SentimentSourceKey,
+    row: SourceSpecificRow | null | undefined,
+): TrendingSentimentItem | null {
+    if (!row) return null;
+    const ticker = typeof row.ticker === 'string' ? row.ticker.trim().toUpperCase() : '';
+    const buzzScore = toNumber(row.buzz_score);
+    if (!ticker || buzzScore === null) return null;
+    const metricValue = toNumber(row[SOURCE_CONFIG[source].metricField]);
+    return {
+        source,
+        label: SOURCE_CONFIG[source].label,
+        ticker,
+        companyName: typeof row.company_name === 'string' ? row.company_name : null,
+        buzzScore: roundTo(buzzScore),
+        bullishPct: toNumber(row.bullish_pct),
+        trend: normalizeTrend(row.trend),
+        metricLabel: SOURCE_CONFIG[source].metricLabel,
+        metricValue: metricValue === null ? null : Math.round(metricValue),
     };
 }
 

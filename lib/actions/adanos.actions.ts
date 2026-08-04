@@ -9,17 +9,9 @@ import {
     type SourceComparePayload,
     type StockSentimentInsights,
 } from './adanos.helpers';
+import { FETCH_TIMEOUT_MS, getAdanosApiKey, getAdanosBaseUrl } from './adanos.shared';
 
 const DEFAULT_LOOKBACK_DAYS = 7;
-const FETCH_TIMEOUT_MS = 5000;
-
-function getAdanosBaseUrl(): string {
-    return (process.env.ADANOS_API_BASE_URL || 'https://api.adanos.org').replace(/\/$/, '');
-}
-
-function getAdanosApiKey(): string {
-    return process.env.ADANOS_API_KEY ?? '';
-}
 
 async function fetchCompareSource(
     source: SentimentSourceKey,

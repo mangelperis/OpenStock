@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-    getStockSentimentInsights,
-} from '@/lib/actions/adanos.actions';
+import { getStockSentimentInsights } from '@/lib/actions/adanos.actions';
+import { getAllTrendingSentiment, getTrendingBySource } from '@/lib/actions/adanos.trending';
 import {
     buildStockSentimentInsights,
     getSourceAlignment,
     normalizeSourceInsight,
+    normalizeTrendingItem,
 } from '@/lib/actions/adanos.helpers';
 
 afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     delete process.env.ADANOS_API_KEY;
     delete process.env.ADANOS_API_BASE_URL;
 });
@@ -67,6 +68,49 @@ describe('normalizeSourceInsight', () => {
                 bullish_pct: 54,
             }),
         ).toBeNull();
+    });
+});
+
+describe('normalizeTrendingItem', () => {
+    it('maps a reddit trending row', () => {
+        expect(
+            normalizeTrendingItem('reddit', {
+                ticker: 'AMZN',
+                company_name: 'Amazon.com Inc',
+                buzz_score: 75,
+                bullish_pct: 31,
+                trend: 'rising',
+                mentions: 134,
+            }),
+        ).toEqual({
+            source: 'reddit',
+            label: 'Reddit',
+            ticker: 'AMZN',
+            companyName: 'Amazon.com Inc',
+            buzzScore: 75,
+            bullishPct: 31,
+            trend: 'rising',
+            metricLabel: 'Mentions',
+            metricValue: 134,
+        });
+    });
+
+    it('maps polymarket trade_count', () => {
+        expect(
+            normalizeTrendingItem('polymarket', {
+                ticker: 'PLTR',
+                company_name: 'Palantir',
+                buzz_score: 70.5,
+                bullish_pct: 93,
+                trend: 'rising',
+                trade_count: 87,
+            })?.metricValue,
+        ).toBe(87);
+    });
+
+    it('returns null without ticker or buzz_score', () => {
+        expect(normalizeTrendingItem('x', { mentions: 10 })).toBeNull();
+        expect(normalizeTrendingItem('x', { ticker: 'MU', mentions: 10 })).toBeNull();
     });
 });
 
@@ -208,5 +252,149 @@ describe('getStockSentimentInsights', () => {
         vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network failed'));
 
         await expect(getStockSentimentInsights('TSLA')).resolves.toBeNull();
+    });
+});
+
+describe('getTrendingBySource', () => {
+    it('returns empty items when API key missing', async () => {
+        await expect(getTrendingBySource('reddit')).resolves.toEqual({ items: [], error: null });
+    });
+
+    it('normalizes array payload and enriches from stock detail', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockImplementation(async (url: string) => {
+                const href = String(url);
+                if (href.includes('/trending')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => [
+                            {
+                                ticker: 'AMZN',
+                                company_name: 'Amazon.com Inc',
+                                buzz_score: 75,
+                                bullish_pct: 31,
+                                trend: 'rising',
+                                mentions: 134,
+                            },
+                        ],
+                    };
+                }
+                // /stock/AMZN — detail window numbers (may differ from trending)
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        ticker: 'AMZN',
+                        company_name: 'Amazon.com Inc',
+                        buzz_score: 81.5,
+                        bullish_pct: 35,
+                        trend: 'falling',
+                        mentions: 3423,
+                    }),
+                };
+            }),
+        );
+        const result = await getTrendingBySource('reddit', 15);
+        expect(result.error).toBeNull();
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0]).toMatchObject({
+            ticker: 'AMZN',
+            buzzScore: 81.5,
+            bullishPct: 35,
+            metricValue: 3423,
+            trend: 'falling',
+        });
+        expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/reddit\/stocks\/v1\/trending\?.*days=7/),
+            expect.objectContaining({
+                headers: expect.objectContaining({ 'X-API-Key': 'test-key' }),
+                next: { revalidate: 3600 },
+            }),
+        );
+        expect(fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/reddit/stocks/v1/stock/AMZN'),
+            expect.any(Object),
+        );
+    });
+
+    it('sorts by buzzScore descending before slicing', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockImplementation(async (url: string) => {
+                const href = String(url);
+                if (href.includes('/trending')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => [
+                            { ticker: 'LOW', buzz_score: 40, bullish_pct: 50, trend: 'stable', mentions: 10 },
+                            { ticker: 'HIGH', buzz_score: 90, bullish_pct: 50, trend: 'rising', mentions: 20 },
+                            { ticker: 'MID', buzz_score: 60, bullish_pct: 50, trend: 'falling', mentions: 15 },
+                        ],
+                    };
+                }
+                const ticker = href.split('/stock/')[1]?.split('?')[0] ?? 'UNK';
+                const buzz = ticker === 'HIGH' ? 90 : ticker === 'MID' ? 60 : 40;
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        ticker,
+                        buzz_score: buzz,
+                        bullish_pct: 50,
+                        trend: 'stable',
+                        mentions: 10,
+                    }),
+                };
+            }),
+        );
+        const result = await getTrendingBySource('reddit', 15);
+        expect(result.items.map((item) => item.ticker)).toEqual(['HIGH', 'MID', 'LOW']);
+    });
+
+    it('returns error on HTTP failure', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: false,
+                status: 503,
+                json: async () => ({}),
+            }),
+        );
+        const result = await getTrendingBySource('reddit');
+        expect(result.items).toEqual([]);
+        expect(result.error).toBe('Failed to load trending data (503)');
+    });
+
+    it('returns error on fetch exception', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network failed')));
+        const result = await getTrendingBySource('reddit');
+        expect(result.items).toEqual([]);
+        expect(result.error).toBe('Failed to load trending data');
+    });
+});
+
+describe('getAllTrendingSentiment', () => {
+    it('returns all four keys with items and error fields', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => [],
+            }),
+        );
+        const all = await getAllTrendingSentiment(15);
+        expect(Object.keys(all).sort()).toEqual(['news', 'polymarket', 'reddit', 'x']);
+        for (const source of Object.keys(all)) {
+            expect(all[source as keyof typeof all]).toEqual({ items: [], error: null });
+        }
     });
 });
