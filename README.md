@@ -68,11 +68,14 @@ Changes in this fork relative to upstream OpenStock:
 
 ### Sentiment movers (`/sentiment`)
 - New **Sentiment** nav item and login-gated page.
-- Shows Adanos **hottest** tickers by buzz (~15), with tabs for Reddit, X, News, and Polymarket.
+- Adanos buzz over **7 days** (aligned with stock-detail cards), with tabs for Reddit, X, News, and Polymarket.
+- Views: **Hottest** (default) and **Falling** filter (same list, `trend === falling` only — not a reverse sort of hottest).
+- **Watchlist** badges on movers; **My watchlist buzz** is opt-in (Load buzz) for the active source only.
+- On-demand **Why?** via Adanos `/stock/{ticker}/explain` (no table-wide prefetch).
+- Quota: only the default source (Reddit) is server-prefetched; other tabs fetch on click. No per-row `/stock` enrich.
 - Rows link to local `/stocks/[symbol]` pages.
 - Distinct UI states for missing `ADANOS_API_KEY`, empty lists, and per-source fetch errors.
-- Trending fetch lives in `lib/actions/adanos.trending.ts` (not a server action) with 1-hour cache (`revalidate: 3600`).
-- Design/plan notes: `docs/superpowers/specs/2026-08-04-sentiment-movers-design.md`, `docs/superpowers/plans/2026-08-04-sentiment-movers.md`.
+- Design/plan notes: `docs/superpowers/specs/2026-08-04-sentiment-movers-design.md`, `docs/superpowers/specs/2026-08-04-sentiment-expansion-design.md`, matching plans under `docs/superpowers/plans/`.
 
 ### Watchlist navigation
 - Replaced the TradingView market-quotes widget on the watchlist with a local Finnhub-backed table.
@@ -148,7 +151,7 @@ Language composition
     - Per-user watchlist stored in MongoDB (unique symbol per user)
     - Local Finnhub table with links to `/stocks/[symbol]` (this fork)
 - Sentiment movers (this fork)
-    - Login-gated `/sentiment` page: hottest Adanos buzz leaders by source tab
+    - Login-gated `/sentiment`: Hottest + Falling filter, watchlist buzz (active source), on-demand Why?
 - Stock details
     - TradingView symbol info, candlestick/advanced charts, baseline, technicals
     - Company profile and financials widgets
@@ -234,9 +237,16 @@ MONGODB_URI=mongodb://root:example@mongodb:27017/openstock?authSource=admin
 
 4) Start the stack:
 ```bash
-# from the repository root
+# from the repository root — preferred
+make up-build          # build + start
+make logs              # follow logs
+make down              # stop (keeps Mongo volume)
+
+# or raw compose
 docker compose up -d mongodb && docker compose up -d --build
 ```
+
+Useful Make targets: `make help`, `make rebuild` (app only), `make restart`, `make ps`, `make shell`, `make mongo`, `make clean-volumes` (destructive), plus host helpers `make install`, `make dev`, `make test`, `make lint`.
 
 5) Access the app:
 - App: http://localhost:3001 (this fork maps host **3001→3000**; upstream docs use 3000)

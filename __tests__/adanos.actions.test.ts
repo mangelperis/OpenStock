@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { getStockSentimentInsights } from '@/lib/actions/adanos.actions';
+import { getSentimentExplain } from '@/lib/actions/adanos.explain';
 import { getAllTrendingSentiment, getTrendingBySource } from '@/lib/actions/adanos.trending';
+import {
+    getAllWatchlistSentiment,
+    getWatchlistSentimentBySource,
+} from '@/lib/actions/adanos.watchlist-sentiment';
 import {
     buildStockSentimentInsights,
     getSourceAlignment,
@@ -260,41 +265,23 @@ describe('getTrendingBySource', () => {
         await expect(getTrendingBySource('reddit')).resolves.toEqual({ items: [], error: null });
     });
 
-    it('normalizes array payload and enriches from stock detail', async () => {
+    it('normalizes array payload with days=7 lookback', async () => {
         process.env.ADANOS_API_KEY = 'test-key';
         vi.stubGlobal(
             'fetch',
-            vi.fn().mockImplementation(async (url: string) => {
-                const href = String(url);
-                if (href.includes('/trending')) {
-                    return {
-                        ok: true,
-                        status: 200,
-                        json: async () => [
-                            {
-                                ticker: 'AMZN',
-                                company_name: 'Amazon.com Inc',
-                                buzz_score: 75,
-                                bullish_pct: 31,
-                                trend: 'rising',
-                                mentions: 134,
-                            },
-                        ],
-                    };
-                }
-                // /stock/AMZN — detail window numbers (may differ from trending)
-                return {
-                    ok: true,
-                    status: 200,
-                    json: async () => ({
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => [
+                    {
                         ticker: 'AMZN',
                         company_name: 'Amazon.com Inc',
-                        buzz_score: 81.5,
-                        bullish_pct: 35,
-                        trend: 'falling',
-                        mentions: 3423,
-                    }),
-                };
+                        buzz_score: 75,
+                        bullish_pct: 31,
+                        trend: 'rising',
+                        mentions: 134,
+                    },
+                ],
             }),
         );
         const result = await getTrendingBySource('reddit', 15);
@@ -302,11 +289,12 @@ describe('getTrendingBySource', () => {
         expect(result.items).toHaveLength(1);
         expect(result.items[0]).toMatchObject({
             ticker: 'AMZN',
-            buzzScore: 81.5,
-            bullishPct: 35,
-            metricValue: 3423,
-            trend: 'falling',
+            buzzScore: 75,
+            bullishPct: 31,
+            metricValue: 134,
+            trend: 'rising',
         });
+        expect(fetch).toHaveBeenCalledTimes(1);
         expect(fetch).toHaveBeenCalledWith(
             expect.stringMatching(/\/reddit\/stocks\/v1\/trending\?.*days=7/),
             expect.objectContaining({
@@ -314,42 +302,20 @@ describe('getTrendingBySource', () => {
                 next: { revalidate: 3600 },
             }),
         );
-        expect(fetch).toHaveBeenCalledWith(
-            expect.stringContaining('/reddit/stocks/v1/stock/AMZN'),
-            expect.any(Object),
-        );
     });
 
     it('sorts by buzzScore descending before slicing', async () => {
         process.env.ADANOS_API_KEY = 'test-key';
         vi.stubGlobal(
             'fetch',
-            vi.fn().mockImplementation(async (url: string) => {
-                const href = String(url);
-                if (href.includes('/trending')) {
-                    return {
-                        ok: true,
-                        status: 200,
-                        json: async () => [
-                            { ticker: 'LOW', buzz_score: 40, bullish_pct: 50, trend: 'stable', mentions: 10 },
-                            { ticker: 'HIGH', buzz_score: 90, bullish_pct: 50, trend: 'rising', mentions: 20 },
-                            { ticker: 'MID', buzz_score: 60, bullish_pct: 50, trend: 'falling', mentions: 15 },
-                        ],
-                    };
-                }
-                const ticker = href.split('/stock/')[1]?.split('?')[0] ?? 'UNK';
-                const buzz = ticker === 'HIGH' ? 90 : ticker === 'MID' ? 60 : 40;
-                return {
-                    ok: true,
-                    status: 200,
-                    json: async () => ({
-                        ticker,
-                        buzz_score: buzz,
-                        bullish_pct: 50,
-                        trend: 'stable',
-                        mentions: 10,
-                    }),
-                };
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => [
+                    { ticker: 'LOW', buzz_score: 40, bullish_pct: 50, trend: 'stable', mentions: 10 },
+                    { ticker: 'HIGH', buzz_score: 90, bullish_pct: 50, trend: 'rising', mentions: 20 },
+                    { ticker: 'MID', buzz_score: 60, bullish_pct: 50, trend: 'falling', mentions: 15 },
+                ],
             }),
         );
         const result = await getTrendingBySource('reddit', 15);
@@ -396,5 +362,155 @@ describe('getAllTrendingSentiment', () => {
         for (const source of Object.keys(all)) {
             expect(all[source as keyof typeof all]).toEqual({ items: [], error: null });
         }
+    });
+});
+
+describe('getWatchlistSentimentBySource', () => {
+    it('returns empty without API key', async () => {
+        await expect(getWatchlistSentimentBySource('reddit', ['AAPL'])).resolves.toEqual({
+            items: [],
+            error: null,
+        });
+    });
+
+    it('skips fetch when symbols are empty', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+        await expect(getWatchlistSentimentBySource('reddit', [])).resolves.toEqual({
+            items: [],
+            error: null,
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('normalizes compare stocks payload', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    stocks: [
+                        {
+                            ticker: 'aapl',
+                            company_name: 'Apple',
+                            buzz_score: 55.5,
+                            bullish_pct: 48,
+                            trend: 'stable',
+                            mentions: 200,
+                        },
+                    ],
+                }),
+            }),
+        );
+        const result = await getWatchlistSentimentBySource('reddit', ['AAPL', 'AAPL']);
+        expect(result.error).toBeNull();
+        expect(result.items).toEqual([
+            {
+                source: 'reddit',
+                label: 'Reddit',
+                ticker: 'AAPL',
+                companyName: 'Apple',
+                buzzScore: 55.5,
+                bullishPct: 48,
+                trend: 'stable',
+                metricLabel: 'Mentions',
+                metricValue: 200,
+            },
+        ]);
+        expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/reddit\/stocks\/v1\/compare\?.*tickers=AAPL.*days=7/),
+            expect.objectContaining({
+                headers: expect.objectContaining({ 'X-API-Key': 'test-key' }),
+                next: { revalidate: 3600 },
+            }),
+        );
+    });
+});
+
+describe('getAllWatchlistSentiment', () => {
+    it('returns all four source keys', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => ({ stocks: [] }),
+            }),
+        );
+        const all = await getAllWatchlistSentiment(['MSFT']);
+        expect(Object.keys(all).sort()).toEqual(['news', 'polymarket', 'reddit', 'x']);
+    });
+});
+
+describe('getSentimentExplain', () => {
+    it('returns error when API key missing', async () => {
+        await expect(getSentimentExplain('reddit', 'TSLA')).resolves.toEqual({
+            error: 'Adanos API key is not configured',
+        });
+    });
+
+    it('maps explain payload', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    ticker: 'TSLA',
+                    explanation: '  Rising mentions on Reddit.  ',
+                    model: 'gpt-test',
+                    generated_at: '2026-08-04T00:00:00Z',
+                    cached: true,
+                }),
+            }),
+        );
+        await expect(getSentimentExplain('reddit', 'tsla')).resolves.toEqual({
+            explanation: 'Rising mentions on Reddit.',
+            model: 'gpt-test',
+            generatedAt: '2026-08-04T00:00:00Z',
+            cached: true,
+        });
+        expect(fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/reddit/stocks/v1/stock/TSLA/explain'),
+            expect.objectContaining({
+                headers: expect.objectContaining({ 'X-API-Key': 'test-key' }),
+                next: { revalidate: 3600 },
+            }),
+        );
+    });
+
+    it('returns a clear rate-limit message on 429', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: false,
+                status: 429,
+                json: async () => ({}),
+            }),
+        );
+        await expect(getSentimentExplain('x', 'NVDA')).resolves.toMatchObject({
+            error: expect.stringContaining('429'),
+        });
+    });
+
+    it('returns error on HTTP failure', async () => {
+        process.env.ADANOS_API_KEY = 'test-key';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: false,
+                status: 500,
+                json: async () => ({}),
+            }),
+        );
+        await expect(getSentimentExplain('x', 'NVDA')).resolves.toEqual({
+            error: 'Failed to load explanation (500)',
+        });
     });
 });

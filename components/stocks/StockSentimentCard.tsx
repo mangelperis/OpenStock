@@ -35,7 +35,18 @@ function getAlignmentClasses(alignment: string): string {
 
 export default function StockSentimentCard({ insight }: StockSentimentCardProps) {
     if (!insight) {
-        return null;
+        return (
+            <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 backdrop-blur-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
+                    Sentiment Insights
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-white">Unavailable right now</h2>
+                <p className="mt-1 text-sm text-gray-400">
+                    Could not load the 7-day Adanos snapshot (missing key, rate limit, or no coverage).
+                    Refresh later — heavy Sentiment page traffic can temporarily rate-limit stock cards.
+                </p>
+            </section>
+        );
     }
 
     return (
@@ -55,7 +66,7 @@ export default function StockSentimentCard({ insight }: StockSentimentCardProps)
                             </p>
                         ) : null}
                         <p className="mt-1 text-sm text-gray-400">
-                            Structured sentiment snapshot across Reddit, X.com, news, and Polymarket.
+                            7-day Adanos snapshot across Reddit, X.com, news, and Polymarket.
                         </p>
                     </div>
 

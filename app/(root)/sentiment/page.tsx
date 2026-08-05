@@ -1,8 +1,11 @@
 import { auth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getAllTrendingSentiment } from '@/lib/actions/adanos.trending';
+import { getTrendingBySource } from '@/lib/actions/adanos.trending';
+import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
 import SentimentMoversClient from '@/components/sentiment/SentimentMoversClient';
+
+const DEFAULT_SOURCE = 'reddit' as const;
 
 export default async function SentimentPage() {
     const session = await auth.api.getSession({
@@ -14,7 +17,13 @@ export default async function SentimentPage() {
     }
 
     const hasAdanosKey = Boolean(process.env.ADANOS_API_KEY);
-    const trending = hasAdanosKey ? await getAllTrendingSentiment(15) : null;
+    const watchlist = await getUserWatchlist(session.user.id);
+    const watchlistSymbols = (Array.isArray(watchlist) ? watchlist : [])
+        .map((row: { symbol?: string }) => (typeof row.symbol === 'string' ? row.symbol : ''))
+        .filter(Boolean)
+        .map((s: string) => s.toUpperCase());
+
+    const trending = hasAdanosKey ? await getTrendingBySource(DEFAULT_SOURCE, 15) : null;
 
     return (
         <div className="min-h-screen bg-black text-gray-100 p-6 md:p-8">
@@ -23,9 +32,8 @@ export default async function SentimentPage() {
                     Sentiment
                 </h1>
                 <p className="text-gray-500 mt-1">
-                    Hottest tickers by Adanos buzz over the last 7 days (same window as the stock detail
-                    sentiment card). Per-source tabs — not an average across channels, and not price
-                    predictions.
+                    Hottest movers by Adanos buzz (7-day), plus a Falling filter. One source loads
+                    at a time to stay under rate limits — Why? and watchlist buzz are on-demand.
                 </p>
             </div>
 
@@ -38,7 +46,11 @@ export default async function SentimentPage() {
                     </p>
                 </div>
             ) : trending ? (
-                <SentimentMoversClient initialData={trending} />
+                <SentimentMoversClient
+                    initialSource={DEFAULT_SOURCE}
+                    initialResult={trending}
+                    watchlistSymbols={watchlistSymbols}
+                />
             ) : null}
         </div>
     );
